@@ -76,30 +76,6 @@ multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
   ## GS
   for( s in 1:S ){
     
-    ## sample (gamma, {Sigj}) jointly
-    # sample gamma; Sigjs are marginalized out
-    d.sig = matrix(NA,nrow=g,ncol=DFD)
-    for ( j in 1:g ){
-      Vj.inv = kronecker(V2.inv[[j]],V1.inv[[j]])
-      Vj = kronecker(V2[[j]],V1[[j]])
-      d.sig[j,] = sapply(df.domain,function(k)
-        dmatT.propto(Y.list[[j]],k-p+1,w[j]^(1/2)*U[[j]],(1-w[j]) * Vj * (k-p-1),k,
-                     Omega.inv = Vj.inv / (k-p-1) / (1-w[j]) ) )
-    }
-    d.sig = apply(d.sig,2,sum)
-    d.sig = exp(d.sig-max(d.sig))
-    probs = d.sig/sum(d.sig)
-    gam = sample(df.domain,size = 1,prob = probs)
-    
-    # sample Sigj
-    for( j in 1:g ){
-      V = kronecker(V2[[j]],V1[[j]])
-      Y.tilde = Y.list[[j]] - w[j]^(1/2)*U[[j]]
-      M = solve(V * (gam - p - 1) + t(Y.tilde) %*% Y.tilde / (1-w[j]))
-      Sig.inv[[j]] = rwish(M,gam+ns[j]-1)
-      Sig[[j]] = solve(Sig.inv[[j]])
-    }
-    
     ## sample (w,{Uj}) jointly
     # sample w; U is marginalized out
     # propose w.star from symmetric proposal
@@ -176,6 +152,29 @@ multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
       Psi[[j]] = solve(Psi.inv[[j]])
     }
     
+    ## sample (gamma, {Sigj}) jointly
+    # sample gamma; Sigjs are marginalized out
+    d.sig = matrix(NA,nrow=g,ncol=DFD)
+    for ( j in 1:g ){
+      Vj.inv = kronecker(V2.inv[[j]],V1.inv[[j]])
+      Vj = kronecker(V2[[j]],V1[[j]])
+      d.sig[j,] = sapply(df.domain,function(k)
+        dmatT.propto(Y.list[[j]],k-p+1,w[j]^(1/2)*U[[j]],(1-w[j]) * Vj * (k-p-1),k,
+                     Omega.inv = Vj.inv / (k-p-1) / (1-w[j]) ) )
+    }
+    d.sig = apply(d.sig,2,sum)
+    d.sig = exp(d.sig-max(d.sig))
+    probs = d.sig/sum(d.sig)
+    gam = sample(df.domain,size = 1,prob = probs)
+    
+    # sample Sigj
+    for( j in 1:g ){
+      V = kronecker(V2[[j]],V1[[j]])
+      Y.tilde = Y.list[[j]] - w[j]^(1/2)*U[[j]]
+      M = solve(V * (gam - p - 1) + t(Y.tilde) %*% Y.tilde / (1-w[j]))
+      Sig.inv[[j]] = rwish(M,gam+ns[j]-1)
+      Sig[[j]] = solve(Sig.inv[[j]])
+    }
     
     ### layer 3
     
