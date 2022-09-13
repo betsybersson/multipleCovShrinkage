@@ -12,22 +12,22 @@ source("./comparison_cov_functions.R")
 
 ###########################
 ## model parameters
-gs = c(2,4,10) 
+gs = c(2,4)  # 10
 Ns = c(1)# 
-p1s = c(2,4,6,10)
-p2 = 4
-data.type = "homo, sep" 
+p1s = c(2,4,8)
+p2 = 3
+data.type = "homo, not sep" 
 ## file identifyer
-suffix = "_homosep"
+suffix = "_homoNOTsep"
 ###########################
 
 ###########################
 ## GS parameters
-S = 27000
-burnin = 2000
-thin = 15
+S = 100 # 28000
+burnin = 20 # 3000
+thin = 10 #10
 ## simulation parameters
-sim = 50
+sim = 5 #50
 ###########################
 
 
@@ -163,7 +163,7 @@ for (n.ind in 1:length(Ns)){
                                       save_all = 0)
         
         ## summarise output and save
-        output$MS.pm = array(colMeans(model$Sig + model$Psi),dim = c(p,p,g))
+        output$MS.pm = array(colMeans(model$cov),dim = c(p,p,g))
         MS.stein.pm.temp = array(colMeans(model$cov.inv),dim = c(p,p,g))
         MS.stein.pm.temp.inv = array(NA,dim=c(p,p,g))
         for ( k in 1:g ){

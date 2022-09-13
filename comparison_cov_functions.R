@@ -65,6 +65,25 @@ cov.shrink.pm = function(S,n,S0,nu,
   return(out)
   
 }
+cov.shrink.steinBE = function(S,n,S0,nu,
+                         de.meaned = F){
+  ## Evaluate inverse of posterior mean of precision matrix from following hierarchical model
+  ## (i.e. Bayes estimator under Stein loss):
+  # Y ~ N_(nxp)(0,Sig)
+  # Therefore, S = Y'Y ~ W(Sig,n)
+  # Sig ~ IW(S0^(-1)/(nu-p-1),nu)
+  # if de.meaned = true, use n-1 instead of n in degrees of freedom on S
+  
+  nu.star = nu + n
+  if ( de.meaned == T ){
+    nu.star = nu.star - 1
+  }
+  
+  out = (S0 * (nu - p - 1) + S) / (nu.star)
+  
+  return(out)
+  
+}
 cov.kron.mle = function(X,itmax = 100,eps = 1e-5,
                         de.meaned = F){
   ## block coordinate descent algorithm

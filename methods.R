@@ -1,6 +1,6 @@
 multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
                                  save_all = 1,
-                                 mh.delta = .1,
+                                 mh.delta.star = .1,
                                  single.weight = 1){
   
   ###########################
@@ -41,16 +41,17 @@ multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
   
   w = rep(.5,g)
   
+  num2save = sum((c(burnin:S)%%thin) == 0)
+  
   
   ## create storage
   if (save_all == 0){
     # layer 1
-    Psi.out = array(NA,dim = c(S,p*p*g))
-    Sig.out = array(NA,dim = c(S,p*p*g))
-    cov.inv = array(NA,dim = c(S,p*p*g))
-    df.out = array(NA,dim = c(S,2))
-    eta0.out = array(NA,dim = c(S,1))
-    w.out = array(NA,dim=c(S,g))
+    cov.out = array(NA,dim = c(num2save,p*p*g))
+    cov.inv = array(NA,dim = c(num2save,p*p*g))
+    df.out = array(NA,dim = c(num2save,2))
+    eta0.out = array(NA,dim = c(num2save,1))
+    w.out = array(NA,dim=c(num2save,g))
   } else {
     # layer 1
     Psi.out = array(NA,dim = c(S,p*p*g))
@@ -72,9 +73,16 @@ multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
   
   # helpers
   acc = rep(0,g)
+  index = 1
   
   ## GS
   for( s in 1:S ){
+    
+    if (s < 2000){
+      mh.delta = .5
+    } else {
+      mh.delta = mh.delta.star
+    }
     
     ## sample (w,{Uj}) jointly
     # sample w; U is marginalized out
@@ -230,20 +238,27 @@ multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
     eta0 = sample(df.domain,size = 1,prob = probs)
     
     # helper for output
-    cov.inv.temp = list()
+    cov.inv.temp = cov.temp = list()
     for ( k in 1:g ){
-      cov.inv.temp[[k]] = solve(w[j]*Psi[[k]] + (1-w[j])*Sig[[k]])
+      cov.temp[[k]] = w[j]*Psi[[k]] + (1-w[j])*Sig[[k]]
+      cov.inv.temp[[k]] = solve(cov.temp[[k]])
     }
     
     ## store output
     if (save_all == 0){
-      # layer 1
-      Sig.out[s,]  = unlist(Sig)
-      Psi.out[s,] = unlist(Psi)
-      cov.inv[s,] = unlist(cov.inv.temp)
-      df.out[s,] = c(nu0,gam)
-      eta0.out[s,] = eta0
-      w.out[s,] = w
+      
+      if (s >= burnin){
+        if ((s %% thin) == 0){
+          # layer 1
+          cov.out[index,]  = unlist(cov.temp)
+          cov.inv[index,] = unlist(cov.inv.temp)
+          df.out[index,] = c(nu0,gam)
+          eta0.out[index,] = eta0
+          w.out[index,] = w
+          index = index + 1
+        }
+      }
+      
     } else {
       # layer 1
       Sig.out[s,]  = unlist(Sig)
@@ -267,9 +282,9 @@ multiple_shrinkage_GS = function(S,burnin = round(S*.1),thin = 10,
   
   tosave.ind = seq(from = burnin,to=S,by=thin)
   if (save_all == 0){
-    return(list("Sig" = Sig.out[tosave.ind,], "Psi" = Psi.out[tosave.ind,],
-                "cov.inv" = cov.inv[tosave.ind,],"eta0" = eta0.out[tosave.ind,],
-                "df" = df.out[tosave.ind,],"w" = w.out[tosave.ind,]))
+    return(list("cov" = cov.out,
+                "cov.inv" = cov.inv,"eta0" = eta0.out,
+                "df" = df.out,"w" = w.out))
   } else {
     return(list("Sig" = Sig.out[tosave.ind,], "Psi" = Psi.out[tosave.ind,],
                 "U" = U.out[tosave.ind,],
