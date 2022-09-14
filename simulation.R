@@ -7,6 +7,7 @@ library(doParallel)
 source("./helpers.R")
 source("./methods.R")
 source("./comparison_cov_functions.R")
+# source("../main_code/gs_functions.R")
 #source("./discrim_anal_functions.R")
 ###########################
 
@@ -23,11 +24,11 @@ suffix = "_homoNOTsep"
 
 ###########################
 ## GS parameters
-S = 100 # 28000
-burnin = 20 # 3000
-thin = 10 #10
+S = 28000
+burnin = 3000
+thin = 10
 ## simulation parameters
-sim = 5 #50
+sim = 2
 ###########################
 
 
@@ -159,11 +160,11 @@ for (n.ind in 1:length(Ns)){
         
         ###########################
         ## run GS for multiple shrinkage
-        model = multiple_shrinkage_GS(S,burnin,thin,
+        model = multiple_shrinkage_withweight_GS(S,burnin,thin, #multiple_shrinkage_GS(S,burnin,thin,
                                       save_all = 0)
         
         ## summarise output and save
-        output$MS.pm = array(colMeans(model$cov),dim = c(p,p,g))
+        output$MS.pm = array(colMeans(model$cov.out),dim = c(p,p,g))
         MS.stein.pm.temp = array(colMeans(model$cov.inv),dim = c(p,p,g))
         MS.stein.pm.temp.inv = array(NA,dim=c(p,p,g))
         for ( k in 1:g ){

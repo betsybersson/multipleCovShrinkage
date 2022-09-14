@@ -397,3 +397,299 @@ dwish = function(X,M,nu, if_log = FALSE) {
   }
   return(out)
 }
+multiple_shrinkage_withweight_GS = function(S,burnin = round(S*.1),thin = 10,
+                                            save_all = 1,
+                                            mh.delta.star = .1,
+                                            single.weight = 1){
+  ###########################
+  ## set hyper params
+  S0 = eye(p); S0.inv = solve(S0) 
+  V0 = S0; V0.inv = S0.inv
+  
+  eta0 = p + 2
+  S1 = eye(p1); S1.inv = solve(S1)
+  S2 = eye(p2); S2.inv= solve(S2)
+  eta1 = p1 + 2; eta2 = p2 + 2
+  
+  nu.domain = c((p+2):(p+50)); ND = length(nu.domain)
+  
+  # priors
+  N1 = eye(p1)#V1.true # 
+  N2 = eye(p2)#V2.true # 
+  xi1 = p1 + 2#p1 + 40 # 
+  xi2 =  p2 + 2# p2 + 40 #
+  
+  ## intialize values
+  # level 1
+  U = lapply(1:g,function(j)matrix(rnorm(ns[j]*p),ncol=p))
+  Sig = Sig.inv = Psi = Psi.inv = lapply(1:g,function(j)eye(p))
+  # level 2 and 3
+  nu0 = p+2
+  nu = rep(p+2,g)
+  V0 = V0.inv = eye(p)
+  V1 = lapply(1:g,function(j)rwish(S1,eta1))
+  V1.inv = lapply(V1,solve)
+  V2 = lapply(1:g,function(j)rwish(S2,eta2))
+  V2.inv = lapply(V2,solve)
+  # level 3
+  K1 = K1.inv = eye(p1)
+  K2 = K2.inv = eye(p2)
+  S0 = S0.inv = eye(p)
+  eta0 = p+2
+  
+  pis = rep(.5,g)
+  
+  #### change initial values for homo, sep
+  nu0 = p + ND - 2
+  # eta0 = p + ND - 2
+  nu = rep(p + ND - 2,g)
+  
+  
+  ## create storage
+  if (save_all == 0){
+    # layer 1
+    cov.out = cov.inv = array(NA,dim = c(S,p*p*g))
+    nu.out = array(NA,dim = c(S,g+1))
+    eta0.out = array(NA,dim = c(S,1))
+    pis.out = array(NA,dim=c(S,g))
+    acc = rep(0,g)
+  } else {
+    # layer 1
+    Psi.out = array(NA,dim = c(S,p*p*g))
+    Sig.out = array(NA,dim = c(S,p*p*g))
+    cov.inv = array(NA,dim = c(S,p*p*g))
+    U.out   = array(NA,dim = c(S,sum(ns*p)))
+    pis.out = array(NA,dim=c(S,g))
+    acc = rep(0,g)
+    # layer 2
+    nu.out = array(NA,dim = c(S,g+1))
+    V0.out = array(NA,dim = c(S,p*p))
+    V1.out = array(NA,dim = c(S,p1*p1*g))
+    V2.out = array(NA,dim = c(S,p2*p2*g))
+    # layer 3
+    K1.out = array(NA,dim = c(S,p1*p1))
+    K2.out = array(NA,dim = c(S,p2*p2))
+    eta0.out = array(NA,dim = c(S,1))
+  }
+  
+  ## GS
+  for( s in 1:S ){
+    
+    
+    # sample gamma/ nu corresponding to kronecker structure
+    # sample nu kron - uniform on nu.domain - same as shrink to pooled procedure
+    d.sig = matrix(NA,nrow=g,ncol=ND)
+    for ( j in 1:g ){
+      Vj.inv = kronecker(V2.inv[[j]],V1.inv[[j]])
+      Vj = kronecker(V2[[j]],V1[[j]])
+      d.sig[j,] = sapply(nu.domain,function(k)
+        dmatT.propto(Y.list[[j]],k-p+1,pis[j]^(1/2)*U[[j]],(1-pis[j]) * Vj * (k-p-1),k,
+                     Omega.inv = Vj.inv / (k-p-1) / (1-pis[j]) ) )
+    }
+    # same nu for each sigj
+    d.sig = apply(d.sig,2,sum)
+    d.sig = exp(d.sig-max(d.sig))
+    probs = d.sig/sum(d.sig)
+    nu.kron = sample(nu.domain,size = 1,prob = probs)
+    # notation... set each nu to this value
+    nu = rep(nu.kron,g)
+    
+    ## sample xSigj
+    for( j in 1:g ){
+      V = kronecker(V2[[j]],V1[[j]])
+      Y.tilde = Y.list[[j]] - pis[j]^(1/2)*U[[j]]
+      M = solve(V * (nu[j] - p - 1) + t(Y.tilde) %*% Y.tilde / (1-pis[j]))
+      Sig.inv[[j]] = rwish(M,nu[j]+ns[j]-1)
+      Sig[[j]] = solve(Sig.inv[[j]])
+    }
+    
+    ## propose pis.star from symmetric proposal
+    if (s<1000){
+      mh.delta = .5
+      acc = acc*0
+    } else {
+      mh.delta = mh.delta.star
+    }
+    if ( single.weight == 1 ){
+      pi.hat = pis[1]
+      pis.star = MH_sym_proposal_01(pi.hat, mh.delta)
+      ## compute acceptance ratio, joint distn' of all variables and pi
+      d.star = sapply(1:g,function(j)dmatnorm(Y.list[[j]],0,
+                                              eye(ns[j]),
+                                              pis.star * Psi[[j]] + (1-pis.star) * Sig[[j]],
+                                              if_log = TRUE))
+      
+      d.s = sapply(1:g,function(j)dmatnorm(Y.list[[j]],0,
+                                           eye(ns[j]),
+                                           pi.hat * Psi[[j]] + (1-pi.hat) * Sig[[j]],
+                                           if_log = TRUE))
+      R = sum(d.star) - sum(d.s) +
+        dbeta(pis.star,1/2,1/2,log=T) - dbeta(pi.hat,1/2,1/2,log=T) 
+      ## if u<r, set pis to be pis.star
+      if (log(runif(1))<R){
+        pis = rep(pis.star,g)
+        acc[1] = acc[1] + 1
+      }
+    } else {
+      for ( j in 1:g ){
+        pij = pis[j]
+        pij.star = MH_sym_proposal_01(pij, mh.delta)
+        ## compute acceptance ratio, joint distn' of all variables and pi
+        d.star = dmatnorm(Y.list[[j]],0,
+                          eye(ns[j]),
+                          pij.star * Psi[[j]] + (1-pij.star) * Sig[[j]],
+                          if_log = TRUE)
+        
+        d.s = dmatnorm(Y.list[[j]],0,
+                       eye(ns[j]),
+                       pij * Psi[[j]] + (1-pij) * Sig[[j]],
+                       if_log = TRUE)
+        R = (d.star) - (d.s) +
+          dbeta(pij.star,1/2,1/2,log=T) - dbeta(pij,1/2,1/2,log=T) 
+        ## if u<r, set pis to be pis.star
+        if (log(runif(1))<R){
+          pis[j] = pij.star
+          acc[j] = acc[j] + 1
+        }
+      }
+      
+    }
+    
+    ## sample Uj
+    for ( j in 1:g ){
+      W = solve(pis[j]/(1-pis[j])*Sig.inv[[j]] + Psi.inv[[j]])
+      M = pis[j]^(1/2)/(1-pis[j]) * Y.list[[j]] %*% Sig.inv[[j]] %*% W
+      U[[j]] = rmatnorm(M,eye(ns[j]),W)
+    }
+    
+    
+    # sample nu0 - uniform on nu.domain - same as shrink to pooled procedure
+    # integrate out psij
+    d.sig.nu.domain = array(NA,dim=ND)
+    for ( k in 1:length(nu.domain)){
+      nu.star = nu.domain[k]
+      d.sig = sapply(1:g,function(j) dmatT.propto(U[[j]],nu.star-p+1,0,V0*(nu.star - p - 1),nu.star,
+                                                  Omega.inv = V0.inv/(nu.star - p - 1)) )
+      d.sig.nu.domain[k] = sum(unlist(d.sig))
+    }
+    d.temp=exp(d.sig.nu.domain-max(d.sig.nu.domain))
+    probs = d.temp/sum(d.temp)
+    nu0 = sample(nu.domain,size = 1,prob = probs)
+    
+    
+    
+    ## sample Psijs
+    for ( j in 1:g){
+      M = solve(V0*(nu0 - p - 1) + t(U[[j]]) %*% U[[j]])
+      Psi.inv[[j]] = rwish(M,nu0 + ns[j] - 1)
+      Psi[[j]] = solve(Psi.inv[[j]])
+    }
+    
+    
+    ### wishart means
+    
+    ## sample V0
+    M0 = solve(Reduce('+',Psi.inv)*(nu0-p-1) + S0.inv*eta0)
+    V0 = rwish(M0,eta0 + nu0*g)
+    V0.inv = solve(V0)
+    
+    ## sample g V1s
+    Sig.inv.chol = lapply(Sig.inv,function(l)t(chol(l))) ### flipped so chol(S) = LL^T
+    for ( j in 1:g ){
+      L = array(Sig.inv.chol[[j]],dim=c(p1,p2,p)) # checked- should be correct
+      helper = lapply(1:p,function(k) L[,,k] %*% t(V2[[j]]) %*% t(L[,,k]))
+      M = solve(Reduce('+',helper)*(nu[j]-p-1) + S1.inv * eta1)
+      V1[[j]] = rwish(M,eta1 + nu[j] * p2)
+      V1.inv[[j]] = solve(V1[[j]])
+    }
+    
+    ## sample g V2s 
+    for ( j in 1:g ){
+      L = array(Sig.inv.chol[[j]],dim=c(p1,p2,p))
+      helper = lapply(1:p,function(k) t(L[,,k]) %*% t(V1[[j]]) %*% L[,,k])
+      M = solve(Reduce('+',helper)*(nu[j]-p-1) + S2.inv * eta2)
+      V2[[j]] = rwish(M,eta2 + nu[j] * p1)
+      V2.inv[[j]] = solve(V2[[j]])
+    }
+    
+    ### add layer to shrink homo to kron
+    
+    # sample K1
+    V0.chol = t(chol(V0)) ### flipped so chol(S) = LL^T
+    L = array(V0.chol,dim=c(p1,p2,p)) 
+    helper = lapply(1:p,function(k) (L[,,k]) %*% t(K2.inv) %*% t(L[,,k]))
+    M = solve(Reduce('+',helper)*eta0 + N1 * (xi1 - p1 - 1))
+    K1.inv = rwish(M, p2*eta0 + xi1)
+    K1 = solve(K1.inv)
+    
+    # sample K2
+    helper = lapply(1:p,function(k) t(L[,,k]) %*% t(K1.inv) %*% (L[,,k]))
+    M = solve(Reduce('+',helper)*eta0 + N2 * (xi2 - p2 - 1))
+    K2.inv = rwish(M, p1*eta0 + xi2)
+    K2 = solve(K2.inv)
+    
+    # format to be S0 for code
+    S0 = kronecker(K2,K1)
+    S0.inv = kronecker(K2.inv,K1.inv)
+    
+    # sample eta0
+    d.v0 = sapply(nu.domain,function(k)
+      dwish(V0,S0/k,k,if_log = T) )
+    d.v0 = exp(d.v0-max(d.v0))
+    probs = d.v0/sum(d.v0)
+    eta0 = sample(nu.domain,size = 1,prob = probs)
+    
+    
+    cov.inv.temp = cov.temp = list()
+    for ( k in 1:g ){
+      cov.temp[[k]] = (1-pis[j])*Sig[[k]]+pis[j]*Psi[[k]]
+      cov.inv.temp[[k]] = solve(cov.temp[[k]])
+    }
+    
+    ## store output
+    if (save_all == 0){
+      # layer 1
+      cov.out[s,] = unlist(cov.temp)
+      cov.inv[s,] = unlist(cov.inv.temp)
+      nu.out[s,] = c(nu0,nu)
+      eta0.out[s,] = eta0
+      pis.out[s,] = pis
+    } else {
+      # layer 1
+      Sig.out[s,]  = unlist(Sig)
+      Psi.out[s,] = unlist(Psi)
+      cov.inv[s,] = unlist(cov.inv.temp)
+      U.out[s,] = unlist(U)
+      pis.out[s,] = pis
+      # layer 2
+      V0.out[s,] = c(V0)
+      V1.out[s,] = unlist(V1)
+      V2.out[s,] = unlist(V2)
+      nu.out[s,] = c(nu0,nu)
+      # layer 3- shrink homo to kron
+      K1.out[s,] = c(K1)
+      K2.out[s,] = c(K2)
+      eta0.out[s,] = eta0
+    }
+    
+    
+  }
+  
+  tosave.ind = seq(from = burnin,to=S,by=thin)
+  if (save_all == 0){
+    return(list("cov.out" = cov.out[tosave.ind,],
+                "cov.inv" = cov.inv[tosave.ind,],"eta0" = eta0.out[tosave.ind,],
+                "nu" = nu.out[tosave.ind,],"pis" = pis.out[tosave.ind,]))
+  } else {
+    return(list("Sig" = Sig.out[tosave.ind,], "Psi" = Psi.out[tosave.ind,],
+                "U" = U.out[tosave.ind,],
+                "V0" = V0.out[tosave.ind,], "V1" = V1.out[tosave.ind,],
+                "V2" = V2.out[tosave.ind,],"nu" = nu.out[tosave.ind,],
+                "K1" = K1.out[tosave.ind,], "K2" = K2.out[tosave.ind,],
+                "eta0" = eta0.out[tosave.ind,],"cov.inv" = cov.inv[tosave.ind,],
+                "pis" = pis.out[tosave.ind,],"acc" = acc/(S-500),
+                "nu.domain" = nu.domain))
+  }
+  
+}
+
