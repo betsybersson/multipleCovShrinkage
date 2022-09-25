@@ -4,18 +4,15 @@
 library(amen)
 library(foreach)
 library(doParallel)
+source("./cov_functions.R")
 source("./helpers.R")
-source("./methods.R")
-source("./comparison_cov_functions.R")
-# source("../main_code/gs_functions.R")
-#source("./discrim_anal_functions.R")
 ###########################
 
 ###########################
 ## model parameters
 gs = c(2,4)  # 10
 Ns = c(1)# 
-p1s = c(2,4,8)
+p1s = 2 # c(2,4,8)
 p2 = 3
 data.type = "homo, not sep" 
 ## file identifyer
@@ -24,11 +21,11 @@ suffix = "_homoNOTsep"
 
 ###########################
 ## GS parameters
-S = 28000
-burnin = 3000
+S = 3000
+burnin = 100
 thin = 10
 ## simulation parameters
-sim = 2
+sim = 5
 ###########################
 
 
@@ -39,9 +36,6 @@ loss=list()
 for (n.ind in 1:length(Ns)){
   for (g.ind in 1:length(gs)){
     for (p1.ind in 1:length(p1s)){
-      
-      ###########################
-      ## initialization
       
       # get changing params
       g = gs[g.ind]
@@ -54,9 +48,8 @@ for (n.ind in 1:length(Ns)){
       
       # storage helper
       nopool.collect = array(NA,dim=c(p,p,g))
-    
-      ###########################
-      ## get true covariance
+      
+      ### get true covariance
       Sig.true = Sigj.true = list()
       
       set.seed(123)
@@ -64,42 +57,31 @@ for (n.ind in 1:length(Ns)){
         
         RHO = .7
         V1.true = eye(p1)*(1-RHO) + RHO
-        RHO = .3
+        RHO = .2
         V2.true = eye(p2)*(1-RHO) + RHO
-        V.inv.true = kronecker((V2.true),(V1.true))
+        V.true = kronecker((V2.true),(V1.true))
         
         for(i in 1:g){
-          Sig.true[[i]] = V.inv.true
+          Sig.true[[i]] = V.true
         }
         
       } else if (data.type == "hetero, sep"){
         
         for(i in 1:g){
-          RHO = sample(seq(from = .35,to =.99,length.out = 15),1)
+          RHO = sample(seq(from = .35,to =.99,length.out = 20),1)
           V1.true = eye(p1)*(1-RHO) + RHO
-          RHO = sample(seq(from = .35,to =.99,length.out = 15),1)
+          RHO = sample(seq(from = .35,to =.99,length.out = 20),1)
           V2.true = eye(p2)*(1-RHO) + RHO
           
-          V.inv.true = kronecker((V2.true),(V1.true))
-          Sig.true[[i]] = V.inv.true
-        }
-        
-      } else if (data.type == "near homo, not sep") {
-        
-        V1.true = zeros(p1)
-        V2.true = zeros(p2)
-        
-        V0.true = (rcovmat(p))
-        
-        for(i in 1:g){
-          Sig.true[[i]] = V0.true + rcovmat(p,.1)
+          V.true = kronecker((V2.true),(V1.true))
+          Sig.true[[i]] = V.true
         }
         
       } else if (data.type == "hetero, not sep") {
         
         for(i in 1:g){
-          RHO = sample(seq(from = .35,to =.99,length.out = 15),1)
-          Sig.true[[i]] = eye(p)*(1-RHO) + RHO
+          RHO = sample(seq(from = .35,to =.99,length.out = 20),1)
+          Sig.true[[i]] = eye(p)*(1-RHO) + RHO 
         }
         
       } else if (data.type == "homo, not sep") {
@@ -113,17 +95,17 @@ for (n.ind in 1:length(Ns)){
         
       }
       set.seed(Sys.time())
-      
       ###########################
-      ## implement GS- run simulation in parallel
-      
+      ## implement GS
       #setup parallel backend to use many processors
       cores=detectCores()
-      cl <- makeCluster(cores[1] - 1)  # dont overload your computer
+      cl <- makeCluster(cores[1] - 1)  # dontoverload your computer
       registerDoParallel(cl)
       
+      
       parallel.out <- foreach(sim.ind=1:sim, .combine=cbind,.packages = c('amen')) %dopar% {
-
+        # for ( sim.ind in 1:sim){
+        
         output = list()
         
         ###########################
@@ -144,6 +126,26 @@ for (n.ind in 1:length(Ns)){
         }
         Y.list = lapply(Y.list,de.mean)
         
+        ###########################
+        
+        ###########################
+        ## run GS for multiple shrinkage
+        model = SWAG_GS(S,burnin,thin,save_all = 0)
+          
+        ## summarise output and save
+        output$MS.pm = array(colMeans(model$cov.out),dim = c(p,p,g))
+        MS.stein.pm.temp = array(colMeans(model$cov.inv),dim = c(p,p,g))
+        MS.stein.pm.temp.inv = array(NA,dim=c(p,p,g))
+        for ( k in 1:g ){
+          MS.stein.pm.temp.inv[,,k] = solve(MS.stein.pm.temp[,,k])
+        }
+        output$MS.stein.pm = MS.stein.pm.temp.inv
+
+        ###########################
+        
+        ###########################
+        ## reformat data for the cov functions below
+        
         ## reformat to matrix with group
         temp = lbind(Y.list)
         group = temp$group
@@ -155,23 +157,8 @@ for (n.ind in 1:length(Ns)){
         for ( j in 1:N){
           Y.array[,,j] = matrix(Y.matrix[j,],nrow = p1,ncol = p2,byrow = F)
         }
-        
         ###########################
         
-        ###########################
-        ## run GS for multiple shrinkage
-        model = multiple_shrinkage_withweight_GS(S,burnin,thin, #multiple_shrinkage_GS(S,burnin,thin,
-                                      save_all = 0)
-        
-        ## summarise output and save
-        output$MS.pm = array(colMeans(model$cov.out),dim = c(p,p,g))
-        MS.stein.pm.temp = array(colMeans(model$cov.inv),dim = c(p,p,g))
-        MS.stein.pm.temp.inv = array(NA,dim=c(p,p,g))
-        for ( k in 1:g ){
-          MS.stein.pm.temp.inv[,,k] = solve(MS.stein.pm.temp[,,k])
-        }
-        output$MS.stein.pm = MS.stein.pm.temp.inv
-            
         ###########################
         ## no pooling- shrink to decent prior/regularization
         df = p + 4
@@ -215,8 +202,8 @@ for (n.ind in 1:length(Ns)){
         
         output$mle = list.to.3d.array(standard.mle)
         ###########################
+          
         
-      
         ###########################
         ## get distance from each output and the truth
         loss$stein = unlist(lapply(output,function(k)
@@ -228,10 +215,11 @@ for (n.ind in 1:length(Ns)){
         
         ###########################
         
+
         ###########################
         ## return this output
         output = loss
-
+      
         output
         
       }
@@ -239,7 +227,7 @@ for (n.ind in 1:length(Ns)){
       #stop cluster
       stopCluster(cl)
       
-      # re-structure
+      # create new structure
       new.parallel.out = list()
       for (j in 1:3){
         temp = matrix(unlist(parallel.out[j,]),ncol = length(parallel.out[j,][[1]]),byrow=T)
