@@ -10,22 +10,22 @@ source("./helpers.R")
 
 ###########################
 ## model parameters
-gs = c(2,4)  # 10
+gs = 10 #c(2,4)  
 Ns = c(1)# 
-p1s = 2 # c(2,4,8)
+p1s = c(2,4,8)
 p2 = 3
-data.type = "homo, not sep" 
+data.type = "hetero, sep" 
 ## file identifyer
-suffix = "_homoNOTsep"
+suffix = "_heterosep_J10"
 ###########################
 
 ###########################
 ## GS parameters
-S = 3000
-burnin = 100
+S = 28000
+burnin = 3000
 thin = 10
 ## simulation parameters
-sim = 5
+sim = 50
 ###########################
 
 
@@ -68,9 +68,9 @@ for (n.ind in 1:length(Ns)){
       } else if (data.type == "hetero, sep"){
         
         for(i in 1:g){
-          RHO = sample(seq(from = .35,to =.99,length.out = 20),1)
+          RHO = sample(seq(from = .35,to =.9,length.out = 20),1)
           V1.true = eye(p1)*(1-RHO) + RHO
-          RHO = sample(seq(from = .35,to =.99,length.out = 20),1)
+          RHO = sample(seq(from = .35,to =.9,length.out = 20),1)
           V2.true = eye(p2)*(1-RHO) + RHO
           
           V.true = kronecker((V2.true),(V1.true))
@@ -80,7 +80,7 @@ for (n.ind in 1:length(Ns)){
       } else if (data.type == "hetero, not sep") {
         
         for(i in 1:g){
-          RHO = sample(seq(from = .35,to =.99,length.out = 20),1)
+          RHO = sample(seq(from = .35,to =.8,length.out = 20),1)
           Sig.true[[i]] = eye(p)*(1-RHO) + RHO 
         }
         

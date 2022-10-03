@@ -39,15 +39,18 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
   eta0 = p+2
   
   pis = .5
-  
+
+  len.out = length(seq(from = burnin+1, to = S, by=thin))
+
   ## create storage
   if (save_all == 0){
     # layer 1
-    cov.out = cov.inv = array(NA,dim = c(S,p*p*g))
-    nu.out = array(NA,dim = c(S,2))
-    eta0.out = array(NA,dim = c(S,1))
-    pis.out = array(NA,dim=c(S,1))
+    cov.out = cov.inv = array(NA,dim = c(len.out,p*p*g))
+    nu.out = array(NA,dim = c(len.out,2))
+    eta0.out = array(NA,dim = c(len.out,1))
+    pis.out = array(NA,dim=c(len.out,1))
     acc = 0
+    index = 1
   } else {
     # layer 1
     Psi.out = array(NA,dim = c(S,p*p*g))
@@ -217,12 +220,15 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
     
     ## store output
     if (save_all == 0){
-      # layer 1
-      cov.out[s,] = unlist(cov.temp)
-      cov.inv[s,] = unlist(cov.inv.temp)
-      nu.out[s,] = c(nu0,nu)
-      eta0.out[s,] = eta0
-      pis.out[s,] = pis
+       if((s>burnin)&((s %% thin)==0)){
+	  # layer 1
+      	  cov.out[index,] = unlist(cov.temp)
+      	  cov.inv[index,] = unlist(cov.inv.temp)
+      	  nu.out[index,] = c(nu0,nu)
+      	  eta0.out[index,] = eta0
+      	  pis.out[index,] = pis
+	  index = index + 1
+      }
     } else {
       # layer 1
       Sig.out[s,]  = unlist(Sig)
@@ -244,11 +250,11 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
     
   }
   
-  tosave.ind = seq(from = burnin,to=S,by=thin)
+  tosave.ind = seq(from =burnin, to = S, by = thin)
   if (save_all == 0){
-    return(list("cov.out" = cov.out[tosave.ind,],
-                "cov.inv" = cov.inv[tosave.ind,],"eta0" = eta0.out[tosave.ind,],
-                "nu" = nu.out[tosave.ind,],"pis" = pis.out[tosave.ind]))
+    return(list("cov.out" = cov.out,
+                "cov.inv" = cov.inv,"eta0" = eta0.out,
+                "nu" = nu.out,"pis" = pis.out))
   } else {
     return(list("Sig" = Sig.out[tosave.ind,], "Psi" = Psi.out[tosave.ind,],
                 "U" = U.out[tosave.ind,],
