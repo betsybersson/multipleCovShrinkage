@@ -139,7 +139,7 @@ dmatnorm = function(X,
   out = (2*pi)^(-N*P/2) * det(U.inv)^(P/2) * det(V.inv)^(N/2)*
     exp(-mat_trace( V.inv %*% t(X-M) %*% U.inv %*% (X-M) )/2)
   if (if_log == TRUE){
-    out = -N*P*log(2*pi)/2 - P*log(det(U))/2 - N*log(det(V))/2 - 
+    out = -N*P*log(2*pi)/2 - P*determinant(U)$mod[1]/2 - N*determinant(V)$mod[1]/2 - 
       mat_trace( V.inv %*% t(X-M) %*% U.inv %*% (X-M) )/2
   }
   return(out)
@@ -243,4 +243,13 @@ lbind = function(L){
   }
   
   return(list("mat" = mat.out,"group" = group))
+}
+
+## copied directly from hoff amen
+rwish <-function(S0,nu=dim(S0)[1]+2){
+    # sample from a Wishart distribution 
+    # with expected value nu*S0 
+    sS0<-chol(S0)
+    Z<-matrix(rnorm(nu*dim(S0)[1]),nu,dim(S0)[1])%*%sS0
+    t(Z)%*%Z
 }

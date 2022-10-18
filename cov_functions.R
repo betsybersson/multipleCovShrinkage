@@ -3,7 +3,7 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
                   mh.delta.star = .1){
   
   ###########################
-  ## set hyper params
+  ## set hyperx params
   S0 = eye(p); S0.inv = solve(S0) 
   V0 = S0; V0.inv = S0.inv
   
@@ -70,6 +70,12 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
     eta0.out = array(NA,dim = c(S,1))
   }
   
+  # helper
+  S.list = list()
+  for ( j in 1:g ){
+    S.list[[j]] = t(Y.list[[j]]) %*% Y.list[[j]]
+  }
+  
   ## GS
   for( s in 1:S ){
     
@@ -109,13 +115,11 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
     pi.hat = pis[1]
     pis.star = MH_sym_proposal_01(pi.hat, mh.delta)
     ## compute acceptance ratio, joint distn' of all variables and pi
-    d.star = sapply(1:g,function(j)dmatnorm(Y.list[[j]],0,
-                                            eye(ns[j]),
+    d.star = sapply(1:g,function(j)dmatnorm_edited(S.list[[j]],ns[j],
                                             pis.star * Psi[[j]] + (1-pis.star) * Sig[[j]],
                                             if_log = TRUE))
     
-    d.s = sapply(1:g,function(j)dmatnorm(Y.list[[j]],0,
-                                         eye(ns[j]),
+    d.s = sapply(1:g,function(j)dmatnorm_edited(S.list[[j]],ns[j],
                                          pi.hat * Psi[[j]] + (1-pi.hat) * Sig[[j]],
                                          if_log = TRUE))
     R = sum(d.star) - sum(d.s) +
@@ -250,7 +254,7 @@ SWAG_GS= function(S,burnin = round(S*.1),thin = 10,
     
   }
   
-  tosave.ind = seq(from =burnin, to = S, by = thin)
+  tosave.ind = seq(from = burnin, to = S, by = thin)
   if (save_all == 0){
     return(list("cov.out" = cov.out,
                 "cov.inv" = cov.inv,"eta0" = eta0.out,
@@ -469,4 +473,17 @@ cov.kron.pool.mle = function(X,group,itmax = 100,eps = 1e-5,
   
   return(list("Psi" = Psi.tilde,"Sigma" = Sig.tilde))
   
+}
+
+dmatnorm_edited = function(SS,N,
+                    V = eye(ncol(X)),
+                    V.inv = qr.solve(V)){
+  # function for density of X_{ N\times p} \sim N(M, V kron U)
+  # assumes mean 0, rows have cov I
+  P = ncol(SS)
+  
+  out = -N*P*log(2*pi)/2 - N*determinant(V)$mod[1]/2 - 
+      mat_trace( V.inv %*% SS )/2
+  
+  return(out)
 }
